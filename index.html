@@ -36,7 +36,7 @@
             border: 1px solid rgba(255, 255, 255, 0.12);
         }
 
-        /* --- 3D CARD FLIP ANIMATION --- */
+        /* 3D CARD FLIP ANIMATION */
         .card-perspective {
             perspective: 1000px;
         }
@@ -65,7 +65,6 @@
             transform: rotateY(180deg);
         }
 
-        /* REVEAL POPUP DRAMATIC ANIMATIONS */
         @keyframes revealPop {
             0% { transform: scale(0.3) rotate(-10deg); opacity: 0; }
             50% { transform: scale(1.1) rotate(3deg); opacity: 1; }
@@ -266,7 +265,7 @@
             <div class="glass-panel p-4 rounded-3xl shadow-xl border border-slate-700 space-y-2">
                 <div class="flex justify-between items-center text-xs font-bold">
                     <span class="text-slate-400">ラウンド <span id="currentRoundText" class="text-amber-400 text-base font-black">1</span> / 4</span>
-                    <span class="text-slate-400">解除進捗 (目標: <span id="targetDefuseText" class="text-white">0</span>枚)</span>
+                    <span class="text-slate-400">解除進捗 (解除済み: <span id="revealedDefuseCount" class="text-sky-300 font-black">0</span> / <span id="targetDefuseText" class="text-white">0</span>枚)</span>
                 </div>
 
                 <div class="flex justify-between items-baseline pt-1">
@@ -358,7 +357,7 @@
 
     <!-- SCRIPT -->
     <script>
-        const PREFIX = "time-bomb-online-v3-";
+        const PREFIX = "time-bomb-online-v4-";
         let peer = null, myId = "", myName = "", roomCode = "";
         let isHost = false;
         let connections = {}, hostConn = null;
@@ -370,6 +369,7 @@
             players: {},
             currentNipperId: "",
             cutsInRound: 0,
+            totalDefusedCount: 0, // 全ラウンド累積の成功解除枚数
             logHistory: [],
             lastCutInfo: null
         };
@@ -489,6 +489,7 @@
             dealCardsForRound(pIds, count, 5);
             roomData.round = 1;
             roomData.cutsInRound = 0;
+            roomData.totalDefusedCount = 0; // 解除数の累積リセット
             roomData.status = 'ROLE_CONFIRM';
             roomData.currentNipperId = pIds[Math.floor(Math.random() * count)];
             roomData.logHistory = [{ text: "ゲームが開始されました。" }];
@@ -608,15 +609,11 @@
                 document.getElementById('currentNipperName').innerText = nipper ? nipper.name : '----';
 
                 const totalPlayers = Object.keys(roomData.players).length;
-                let revealedDefuses = 0;
-                Object.values(roomData.players).forEach(p => {
-                    p.secretCards.forEach(c => {
-                        if (c.type === 'defuse' && c.revealed) revealedDefuses++;
-                    });
-                });
+                const revealedDefuses = roomData.totalDefusedCount || 0;
 
-                const remainingDefuses = totalPlayers - revealedDefuses;
+                const remainingDefuses = Math.max(0, totalPlayers - revealedDefuses);
                 document.getElementById('targetDefuseText').innerText = totalPlayers;
+                document.getElementById('revealedDefuseCount').innerText = revealedDefuses;
                 document.getElementById('remainingDefuseCount').innerText = remainingDefuses;
 
                 const progressPercent = Math.min(100, Math.max(0, (revealedDefuses / totalPlayers) * 100));
@@ -724,17 +721,12 @@
                 roomData.winner = 'bommer';
                 roomData.winMessage = "ボマー団の勝利！(爆破成功)";
             } else if (card.type === 'defuse') {
+                roomData.totalDefusedCount++; // 全ラウンドの解除枚数を加算
                 resultText = `✨ ${targetPlayer.name} のカードを切ったら【解除】が出た！`;
                 
                 const totalPlayers = Object.keys(roomData.players).length;
-                let revealedDefuses = 0;
-                Object.values(roomData.players).forEach(pl => {
-                    pl.secretCards.forEach(c => {
-                        if (c.type === 'defuse' && c.revealed) revealedDefuses++;
-                    });
-                });
 
-                if (revealedDefuses >= totalPlayers) {
+                if (roomData.totalDefusedCount >= totalPlayers) {
                     resultText += " 全ての解除成功！";
                     roomData.status = 'GAMEOVER';
                     roomData.winner = 'police';
@@ -761,6 +753,7 @@
                     roomData.cutsInRound = 0;
                     roomData.logHistory.push({ text: `🔄 第 ${roomData.round} ラウンド開始！未めくりのカードを混ぜ直して配り直します。` });
 
+                    // 未めくりのカードを回収してシャッフルし、各自に配り直す
                     let remainingDeck = [];
                     Object.values(roomData.players).forEach(p => {
                         p.secretCards.forEach(c => {
@@ -786,7 +779,6 @@
             showCutCardModal(roomData.lastCutInfo);
         }
 
-        /* POPUP DRAMATIC EFFECT WHEN A CARD IS CUT */
         function showCutCardModal(cutInfo) {
             if (!cutInfo) return;
             const modal = document.getElementById('cardCutModal');
