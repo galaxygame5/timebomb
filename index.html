@@ -1,0 +1,845 @@
+<!DOCTYPE html>
+<html lang="ja" class="dark">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>タイムボム！ Online</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script>
+        tailwind.config = {
+            darkMode: 'class',
+            theme: {
+                extend: {
+                    colors: {
+                        brand: { 500: '#ef4444', 600: '#dc2626' }
+                    }
+                }
+            }
+        }
+    </script>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+    <style>
+        @import url('https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;800&family=Zen+Maru+Gothic:wght@500;700;900&display=swap');
+        body {
+            font-family: 'Zen Maru Gothic', 'Plus Jakarta Sans', sans-serif;
+            background-color: #090d16;
+            color: #f8fafc;
+            user-select: none;
+            touch-action: manipulation;
+        }
+        .glass-panel {
+            background: rgba(15, 23, 42, 0.9);
+            backdrop-filter: blur(16px);
+            -webkit-backdrop-filter: blur(16px);
+            border: 1px solid rgba(255, 255, 255, 0.12);
+        }
+
+        /* --- 3D CARD FLIP ANIMATION --- */
+        .card-perspective {
+            perspective: 1000px;
+        }
+        .card-inner {
+            position: relative;
+            width: 100%;
+            height: 100%;
+            transition: transform 0.6s cubic-bezier(0.4, 0.2, 0.2, 1);
+            transform-style: preserve-3d;
+        }
+        .card-inner.flipped {
+            transform: rotateY(180deg);
+        }
+        .card-face {
+            position: absolute;
+            width: 100%;
+            height: 100%;
+            -webkit-backface-visibility: hidden;
+            backface-visibility: hidden;
+            border-radius: 0.75rem;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+        .card-front {
+            transform: rotateY(180deg);
+        }
+
+        /* REVEAL POPUP DRAMATIC ANIMATIONS */
+        @keyframes revealPop {
+            0% { transform: scale(0.3) rotate(-10deg); opacity: 0; }
+            50% { transform: scale(1.1) rotate(3deg); opacity: 1; }
+            100% { transform: scale(1) rotate(0deg); opacity: 1; }
+        }
+        .animate-reveal-pop {
+            animation: revealPop 0.5s cubic-bezier(0.175, 0.885, 0.32, 1.275) forwards;
+        }
+
+        @keyframes screenShake {
+            0%, 100% { transform: translate(0, 0); }
+            10%, 30%, 50%, 70%, 90% { transform: translate(-6px, 4px); }
+            20%, 40%, 60%, 80% { transform: translate(6px, -4px); }
+        }
+        .animate-shake {
+            animation: screenShake 0.5s ease-in-out;
+        }
+
+        ::-webkit-scrollbar { width: 8px; height: 8px; }
+        ::-webkit-scrollbar-track { background: rgba(15, 23, 42, 0.5); }
+        ::-webkit-scrollbar-thumb { background: rgba(239, 68, 68, 0.4); border-radius: 9999px; }
+    </style>
+</head>
+<body class="min-h-screen bg-slate-950 text-slate-100 flex flex-col justify-between overflow-x-hidden text-base">
+
+    <!-- Header -->
+    <header class="w-full p-4 glass-panel sticky top-0 z-40 border-b border-slate-800 flex justify-between items-center shadow-lg">
+        <div class="flex items-center space-x-3 cursor-pointer" onclick="location.reload()">
+            <div class="w-12 h-12 rounded-2xl bg-gradient-to-tr from-red-500 to-amber-600 flex items-center justify-center shadow-lg shadow-red-500/30">
+                <i class="fa-solid fa-bomb text-2xl text-white"></i>
+            </div>
+            <div>
+                <h1 class="font-extrabold text-2xl tracking-wider bg-clip-text text-transparent bg-gradient-to-r from-red-400 via-amber-300 to-yellow-400">
+                    タイムボム！
+                </h1>
+                <p class="text-xs text-slate-400 font-mono tracking-widest uppercase">Time Bomb Online</p>
+            </div>
+        </div>
+
+        <div class="flex items-center space-x-3">
+            <button onclick="openRuleModal()" class="bg-slate-800 hover:bg-slate-700 text-red-400 text-xs font-bold px-3 py-2 rounded-2xl border border-slate-700 flex items-center gap-1.5 transition">
+                <i class="fa-solid fa-circle-question text-sm"></i>
+                <span>ルール</span>
+            </button>
+            <div id="headerInfo" class="hidden flex items-center space-x-3">
+                <div id="roomBadge" class="bg-slate-900 border border-slate-700 px-4 py-2 rounded-2xl text-sm font-mono font-bold text-red-400 flex items-center gap-2 cursor-pointer hover:bg-slate-800 transition" onclick="copyRoomCode()">
+                    <i class="fa-regular fa-copy"></i>
+                    <span id="displayRoomCode">----</span>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- Main Container -->
+    <main class="container mx-auto px-4 py-6 max-w-2xl flex-grow flex flex-col justify-center">
+
+        <!-- VIEW 1: LOBBY -->
+        <div id="viewLobby" class="space-y-6">
+            <div class="text-center space-y-3 my-4">
+                <div class="inline-block px-4 py-1.5 bg-red-500/10 text-red-400 rounded-full text-sm font-bold border border-red-500/20">
+                    正体隠匿系オンラインゲーム（通話プレイ推奨）
+                </div>
+                <h2 class="text-3xl sm:text-4xl font-black text-white">爆弾を解除するか、爆破するか！</h2>
+                <p class="text-slate-300 text-sm sm:text-base max-w-lg mx-auto">
+                    タイムポリス vs ボマー団。会話とブラフで味方を見つけ出せ！
+                </p>
+            </div>
+
+            <div class="glass-panel rounded-3xl p-6 shadow-2xl space-y-3">
+                <label class="block text-sm font-bold uppercase tracking-wider text-slate-300">プレイヤー名</label>
+                <input type="text" id="playerNameInput" maxlength="8" placeholder="名前を入力" 
+                    class="w-full bg-slate-900 border-2 border-slate-700 rounded-2xl px-5 py-4 text-white focus:outline-none focus:border-red-500 font-bold text-xl">
+            </div>
+
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-5">
+                <!-- Create Room -->
+                <div class="glass-panel rounded-3xl p-6 shadow-2xl space-y-5">
+                    <div>
+                        <div class="w-12 h-12 rounded-xl bg-red-500/20 text-red-400 flex items-center justify-center text-2xl mb-3">
+                            <i class="fa-solid fa-plus"></i>
+                        </div>
+                        <h3 class="font-bold text-xl text-white">部屋を作る (ホスト)</h3>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase text-slate-400 mb-1.5">合言葉 (パスワード)</label>
+                            <input type="text" id="createRoomCodeInput" placeholder="例: bomb1" maxlength="12"
+                                class="w-full bg-slate-900 border-2 border-slate-700 rounded-2xl px-4 py-3 text-center text-white font-mono tracking-widest text-lg focus:outline-none focus:border-red-500">
+                        </div>
+                        <button onclick="createRoom()" class="w-full bg-gradient-to-r from-red-600 to-amber-600 text-white font-black text-lg py-4 rounded-2xl shadow-xl transition active:scale-95">
+                            ルームを作成
+                        </button>
+                    </div>
+                </div>
+
+                <!-- Join Room -->
+                <div class="glass-panel rounded-3xl p-6 shadow-2xl space-y-5">
+                    <div>
+                        <div class="w-12 h-12 rounded-xl bg-amber-500/20 text-amber-400 flex items-center justify-center text-2xl mb-3">
+                            <i class="fa-solid fa-right-to-bracket"></i>
+                        </div>
+                        <h3 class="font-bold text-xl text-white">部屋に入る (ゲスト)</h3>
+                    </div>
+                    <div class="space-y-4">
+                        <div>
+                            <label class="block text-xs font-bold uppercase text-slate-400 mb-1.5">合言葉を入力</label>
+                            <input type="text" id="joinRoomCodeInput" placeholder="合言葉 (例: bomb1)" maxlength="12"
+                                class="w-full bg-slate-900 border-2 border-slate-700 rounded-2xl px-4 py-3 text-center text-white font-mono tracking-widest text-lg focus:outline-none focus:border-amber-500">
+                        </div>
+                        <button onclick="joinRoom()" class="w-full bg-gradient-to-r from-amber-600 to-yellow-600 text-white font-black text-lg py-4 rounded-2xl shadow-xl transition active:scale-95">
+                            参加する
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 2: ROOM WAITING LOBBY -->
+        <div id="viewRoomLobby" class="hidden space-y-6">
+            <div class="glass-panel rounded-3xl p-8 shadow-2xl space-y-6">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-5">
+                    <div>
+                        <span class="text-sm font-bold text-red-400 uppercase tracking-wider">LOBBY ROOM</span>
+                        <h2 class="text-3xl font-black text-white mt-1">合言葉: <span id="lobbyRoomCode" class="font-mono text-amber-400">----</span></h2>
+                    </div>
+                    <button onclick="copyRoomCode()" class="bg-slate-800 hover:bg-slate-700 text-slate-200 text-sm font-bold px-4 py-2.5 rounded-2xl border border-slate-700">コピー</button>
+                </div>
+
+                <div class="space-y-3">
+                    <span class="text-sm font-bold text-slate-300">参加プレイヤー (<span id="playerCount">0</span>名 / 2〜8人対応)</span>
+                    <div id="playerList" class="grid grid-cols-1 sm:grid-cols-2 gap-3 max-h-64 overflow-y-auto"></div>
+                </div>
+
+                <div class="pt-3">
+                    <button id="startGameBtn" onclick="startGame()" class="hidden w-full bg-gradient-to-r from-red-600 to-amber-600 text-white font-black text-xl py-5 rounded-2xl shadow-xl transition active:scale-95">
+                        ゲームを開始する 🚀
+                    </button>
+                    <p id="waitingForHostMsg" class="text-center text-slate-300 text-sm py-3 font-bold animate-pulse">ホストの開始を待っています...</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- VIEW 2.5: ROLE CONFIRMATION OVERLAY (10 SECONDS) -->
+        <div id="viewRoleConfirm" class="hidden fixed inset-0 bg-slate-950/95 backdrop-blur-xl z-50 flex flex-col items-center justify-center p-6 text-center space-y-6">
+            <div class="space-y-2">
+                <span class="text-xs font-bold uppercase tracking-widest text-slate-400">ゲーム開始 - 役職確認</span>
+                <h2 class="text-3xl font-black text-white">あなたの正体</h2>
+            </div>
+
+            <div id="confirmRoleCard" class="w-full max-w-sm p-6 rounded-3xl border-2 shadow-2xl space-y-3"></div>
+
+            <div class="glass-panel px-6 py-4 rounded-2xl border border-slate-800 space-y-2 w-full max-w-sm text-left">
+                <span class="text-xs font-bold text-slate-400 uppercase tracking-wider block text-center">今ラウンドのあなたの手札内訳</span>
+                <div id="confirmHandBreakdown" class="flex justify-around items-center pt-1 font-black text-base"></div>
+            </div>
+
+            <div class="space-y-1">
+                <div class="text-4xl font-black text-amber-400 font-mono" id="roleCountdownText">10</div>
+                <p class="text-xs text-slate-400">秒後に自動でゲーム画面に移ります</p>
+            </div>
+        </div>
+
+        <!-- VIEW 3: BATTLE -->
+        <div id="viewBattle" class="hidden space-y-4">
+            
+            <!-- 1. MY SECRET ROLE & HAND BREAKDOWN PANEL -->
+            <div class="glass-panel p-4 rounded-3xl shadow-xl border border-slate-700 space-y-3">
+                <div class="flex justify-between items-center border-b border-slate-800 pb-2">
+                    <div class="flex items-center space-x-2">
+                        <span class="text-xs text-slate-400 font-bold uppercase">あなたの役職:</span>
+                        <span id="myRoleBadge" class="px-3 py-1 rounded-full text-xs font-black">----</span>
+                    </div>
+                    <div class="text-xs text-slate-400 font-bold">
+                        ニッパー保持者: <span id="currentNipperName" class="text-amber-400 font-black">----</span>
+                    </div>
+                </div>
+
+                <div>
+                    <span class="text-[11px] font-bold text-slate-400 block mb-1.5"><i class="fa-solid fa-eye text-amber-400 mr-1"></i> あなたの手元にあるカードの内訳（自分だけ確認可能）</span>
+                    <div class="grid grid-cols-3 gap-2">
+                        <div class="bg-sky-950/60 border border-sky-500/40 rounded-2xl p-2.5 text-center">
+                            <span class="text-xs font-bold text-sky-400 block">解除</span>
+                            <span id="myDefuseCount" class="text-xl font-black text-sky-300">0</span><span class="text-xs text-sky-400">枚</span>
+                        </div>
+                        <div class="bg-red-950/60 border border-red-500/40 rounded-2xl p-2.5 text-center">
+                            <span class="text-xs font-bold text-red-400 block">BOOM</span>
+                            <span id="myBoomCount" class="text-xl font-black text-red-300">0</span><span class="text-xs text-red-400">枚</span>
+                        </div>
+                        <div class="bg-slate-900 border border-slate-700 rounded-2xl p-2.5 text-center">
+                            <span class="text-xs font-bold text-slate-400 block">し〜ん</span>
+                            <span id="mySafeCount" class="text-xl font-black text-slate-300">0</span><span class="text-xs text-slate-400">枚</span>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 2. GAME PROGRESS & CLEAR COUNTER -->
+            <div class="glass-panel p-4 rounded-3xl shadow-xl border border-slate-700 space-y-2">
+                <div class="flex justify-between items-center text-xs font-bold">
+                    <span class="text-slate-400">ラウンド <span id="currentRoundText" class="text-amber-400 text-base font-black">1</span> / 4</span>
+                    <span class="text-slate-400">解除進捗 (目標: <span id="targetDefuseText" class="text-white">0</span>枚)</span>
+                </div>
+
+                <div class="flex justify-between items-baseline pt-1">
+                    <span class="text-xs font-bold text-sky-400">必要解除枚数</span>
+                    <div class="text-2xl font-black text-white">
+                        あと <span id="remainingDefuseCount" class="text-3xl text-sky-400 font-mono">0</span> 枚
+                    </div>
+                </div>
+
+                <div class="w-full bg-slate-900 rounded-full h-3.5 p-0.5 border border-slate-800">
+                    <div id="defuseProgressBar" class="bg-gradient-to-r from-sky-500 to-emerald-400 h-full rounded-full transition-all duration-500" style="width: 0%"></div>
+                </div>
+            </div>
+
+            <!-- 3. ALL PLAYERS' CARDS GRID -->
+            <div class="glass-panel rounded-3xl p-5 shadow-2xl space-y-3 border border-slate-800">
+                <div class="flex justify-between items-center">
+                    <h4 class="text-sm font-extrabold text-white flex items-center gap-1.5">
+                        <i class="fa-solid fa-scissors text-red-400"></i> 場に出ている導線カード
+                    </h4>
+                    <span class="text-[11px] text-amber-400 font-bold">※ニッパーの人は切るカードをタップ</span>
+                </div>
+                <div id="allPlayersCardsContainer" class="space-y-3"></div>
+            </div>
+
+            <!-- 4. LOG HISTORY -->
+            <div class="glass-panel rounded-3xl p-4 shadow-xl space-y-2 border border-slate-800">
+                <div class="text-xs font-bold text-slate-400 border-b border-slate-800 pb-2 flex items-center gap-1.5">
+                    <i class="fa-solid fa-scroll text-red-400"></i> ゲームログ
+                </div>
+                <div id="logHistoryContainer" class="max-h-28 overflow-y-auto space-y-1.5 text-xs font-medium"></div>
+            </div>
+        </div>
+
+        <!-- VIEW 4: GAMEOVER -->
+        <div id="viewGameOver" class="hidden glass-panel rounded-3xl p-8 shadow-2xl text-center space-y-6">
+            <div id="resultBanner" class="py-2 space-y-3"></div>
+            <div class="space-y-3 bg-slate-900/90 p-5 rounded-2xl border border-slate-800 text-left">
+                <h4 class="text-sm font-bold text-slate-300 uppercase tracking-wider text-center">全員の正体と結果</h4>
+                <div id="finalRolesList" class="space-y-2.5"></div>
+            </div>
+            <div id="gameOverHostControls" class="hidden space-y-3">
+                <button onclick="returnToLobby()" class="w-full bg-gradient-to-r from-red-600 to-amber-600 text-white font-black text-lg py-4 rounded-2xl shadow-xl transition active:scale-95 flex items-center justify-center gap-2">
+                    <i class="fa-solid fa-users"></i> ロビーに戻る
+                </button>
+            </div>
+            <p id="gameOverClientMsg" class="hidden text-sm text-slate-300 font-bold animate-pulse">ホストが次の準備をしています...</p>
+        </div>
+
+    </main>
+
+    <!-- CARD CUT ACTION DRAMATIC POPUP MODAL -->
+    <div id="cardCutModal" class="hidden fixed inset-0 bg-slate-950/80 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div id="cardCutModalBody" class="w-full max-w-sm p-6 rounded-3xl border-2 text-center space-y-4 shadow-2xl animate-reveal-pop bg-slate-900 border-slate-700">
+            <span id="cutModalActor" class="text-xs font-bold text-amber-400 block">----</span>
+            <div id="cutModalIcon" class="text-6xl py-2">✂️</div>
+            <h3 id="cutModalResultText" class="text-2xl font-black text-white">めくった結果</h3>
+            <p id="cutModalSubText" class="text-xs text-slate-300">----</p>
+        </div>
+    </div>
+
+    <!-- RULE MODAL -->
+    <div id="ruleModal" class="hidden fixed inset-0 bg-black/85 backdrop-blur-md z-50 flex items-center justify-center p-4">
+        <div class="glass-panel max-w-lg w-full p-6 rounded-3xl space-y-5 border border-slate-700 shadow-2xl max-h-[85vh] overflow-y-auto">
+            <div class="flex justify-between items-center border-b border-slate-800 pb-3">
+                <h3 class="font-extrabold text-xl text-white flex items-center gap-2">
+                    <i class="fa-solid fa-book-open text-red-400"></i> タイムボム ルール
+                </h3>
+                <button onclick="closeRuleModal()" class="text-slate-400 hover:text-white font-bold text-lg px-2">✕</button>
+            </div>
+            <div class="space-y-4 text-xs sm:text-sm text-slate-300 leading-relaxed">
+                <div class="bg-slate-900/80 p-3.5 rounded-2xl border border-slate-800 space-y-1.5">
+                    <h4 class="font-bold text-red-400 text-sm">陣営の目的</h4>
+                    <p>・<strong class="text-sky-300">タイムポリス陣営:</strong> 人数と同数の「解除カード」を制限ラウンド内にすべてめくれば勝利！</p>
+                    <p class="mt-1">・<strong class="text-red-300">ボマー団陣営:</strong> 唯一の「BOOMカード」をめくらせるか、4ラウンド終了まで解除を阻止できれば勝利！</p>
+                </div>
+                <div class="space-y-2">
+                    <h4 class="font-bold text-amber-400 text-sm">進行の流れ</h4>
+                    <p>1. 各自にカードが裏向きで配られます（自分の内訳枚数は画面に表示されます）。</p>
+                    <p>2. 会話を通して誰のカードを切るか決め、ニッパー持ちの人が他人の裏向きカードをめくります。</p>
+                    <p>3. プレイ人数分めくったら1ラウンド終了。残ったカードを回収・混ぜ直して再配布します。</p>
+                </div>
+            </div>
+            <button onclick="closeRuleModal()" class="w-full bg-slate-800 hover:bg-slate-700 text-white font-bold py-3.5 rounded-2xl border border-slate-700 transition">
+                とじる
+            </button>
+        </div>
+    </div>
+
+    <!-- SCRIPT -->
+    <script>
+        const PREFIX = "time-bomb-online-v3-";
+        let peer = null, myId = "", myName = "", roomCode = "";
+        let isHost = false;
+        let connections = {}, hostConn = null;
+        let roleConfirmTimer = null, cutModalTimer = null;
+
+        let roomData = {
+            status: 'LOBBY',
+            round: 1,
+            players: {},
+            currentNipperId: "",
+            cutsInRound: 0,
+            logHistory: [],
+            lastCutInfo: null
+        };
+
+        function showView(viewId) {
+            ['viewLobby', 'viewRoomLobby', 'viewRoleConfirm', 'viewBattle', 'viewGameOver'].forEach(id => {
+                document.getElementById(id).classList.add('hidden');
+            });
+            document.getElementById(viewId).classList.remove('hidden');
+            const headerInfo = document.getElementById('headerInfo');
+            if (viewId !== 'viewLobby' && viewId !== 'viewRoleConfirm') headerInfo.classList.remove('hidden');
+            else headerInfo.classList.add('hidden');
+        }
+
+        function openRuleModal() { document.getElementById('ruleModal').classList.remove('hidden'); }
+        function closeRuleModal() { document.getElementById('ruleModal').classList.add('hidden'); }
+        function getPlayerName() {
+            return document.getElementById('playerNameInput').value.trim() || 'プレイヤー' + Math.floor(Math.random() * 900 + 100);
+        }
+
+        function createRoom() {
+            myName = getPlayerName();
+            roomCode = document.getElementById('createRoomCodeInput').value.trim().toLowerCase();
+            if (!roomCode) { alert("合言葉を入力してください"); return; }
+            isHost = true;
+            peer = new Peer(`${PREFIX}${roomCode}`);
+            peer.on('open', (id) => {
+                myId = id;
+                roomData.hostId = myId;
+                roomData.players = { [myId]: { id: myId, name: myName, isHost: true, role: '', secretCards: [] } };
+                setupLobbyUI();
+                renderRoomState();
+            });
+            peer.on('error', () => { alert("その合言葉はすでに使われています。"); });
+            peer.on('connection', (conn) => {
+                conn.on('open', () => {
+                    conn.on('data', (data) => handleHostData(conn, data));
+                });
+                conn.on('close', () => {
+                    delete connections[conn.peer];
+                    delete roomData.players[conn.peer];
+                    broadcastState();
+                });
+            });
+        }
+
+        function joinRoom() {
+            myName = getPlayerName();
+            roomCode = document.getElementById('joinRoomCodeInput').value.trim().toLowerCase();
+            if (!roomCode) { alert("合言葉を入力してください"); return; }
+            isHost = false;
+            peer = new Peer();
+            peer.on('open', (id) => {
+                myId = id;
+                hostConn = peer.connect(`${PREFIX}${roomCode}`);
+                hostConn.on('open', () => {
+                    hostConn.send({ type: 'JOIN', id: myId, name: myName });
+                    setupLobbyUI();
+                });
+                hostConn.on('data', (data) => handleClientData(data));
+            });
+            peer.on('error', () => { alert("部屋が見つかりませんでした。"); });
+        }
+
+        function setupLobbyUI() {
+            document.getElementById('displayRoomCode').innerText = roomCode;
+            document.getElementById('lobbyRoomCode').innerText = roomCode;
+            showView('viewRoomLobby');
+        }
+
+        function broadcastState() {
+            if (!isHost) return;
+            Object.values(connections).forEach(c => c.send({ type: 'SYNC_STATE', roomData }));
+            renderRoomState();
+        }
+
+        function handleHostData(conn, data) {
+            if (data.type === 'JOIN') {
+                connections[conn.peer] = conn;
+                roomData.players[data.id] = { id: data.id, name: data.name, isHost: false, role: '', secretCards: [] };
+                broadcastState();
+            } else if (data.type === 'CUT_CARD') {
+                processCutCard(data.targetPlayerId, data.cardIndex);
+            }
+        }
+
+        function handleClientData(data) {
+            if (data.type === 'SYNC_STATE') {
+                const prevStatus = roomData.status;
+                const prevLastCut = roomData.lastCutInfo;
+                roomData = data.roomData;
+
+                if (prevStatus !== 'ROLE_CONFIRM' && roomData.status === 'ROLE_CONFIRM') {
+                    startRoleConfirmPhase();
+                } else {
+                    renderRoomState();
+                    if (roomData.lastCutInfo && JSON.stringify(prevLastCut) !== JSON.stringify(roomData.lastCutInfo)) {
+                        showCutCardModal(roomData.lastCutInfo);
+                    }
+                }
+            }
+        }
+
+        function startGame() {
+            if (!isHost) return;
+            const pIds = Object.keys(roomData.players);
+            const count = pIds.length;
+            if (count < 2) { alert("2人以上必要です（推奨4人以上）"); return; }
+
+            let bommerCount = Math.max(1, Math.floor(count / 3));
+            let shuffledPIds = [...pIds].sort(() => Math.random() - 0.5);
+
+            pIds.forEach(pId => {
+                roomData.players[pId].role = shuffledPIds.indexOf(pId) < bommerCount ? 'bommer' : 'police';
+            });
+
+            dealCardsForRound(pIds, count, 5);
+            roomData.round = 1;
+            roomData.cutsInRound = 0;
+            roomData.status = 'ROLE_CONFIRM';
+            roomData.currentNipperId = pIds[Math.floor(Math.random() * count)];
+            roomData.logHistory = [{ text: "ゲームが開始されました。" }];
+            roomData.lastCutInfo = null;
+
+            broadcastState();
+            startRoleConfirmPhase();
+        }
+
+        function dealCardsForRound(pIds, count, cardsPerPlayer) {
+            let deck = [];
+            for (let i = 0; i < count; i++) deck.push('defuse');
+            deck.push('boom');
+            const totalCards = count * cardsPerPlayer;
+            const safeCount = totalCards - count - 1;
+            for (let i = 0; i < safeCount; i++) deck.push('safe');
+
+            deck.sort(() => Math.random() - 0.5);
+
+            pIds.forEach(pId => {
+                let hand = [];
+                for (let i = 0; i < cardsPerPlayer; i++) {
+                    hand.push({ type: deck.pop(), revealed: false });
+                }
+                hand.sort(() => Math.random() - 0.5);
+                roomData.players[pId].secretCards = hand;
+            });
+        }
+
+        function startRoleConfirmPhase() {
+            showView('viewRoleConfirm');
+            const me = roomData.players[myId];
+            const confirmCard = document.getElementById('confirmRoleCard');
+
+            if (me.role === 'police') {
+                confirmCard.className = "w-full max-w-sm p-6 rounded-3xl border-2 bg-sky-950/80 border-sky-500 shadow-2xl space-y-2 text-sky-200";
+                confirmCard.innerHTML = `
+                    <div class="text-2xl font-black text-sky-400"><i class="fa-solid fa-shield-halved mr-2"></i>タイムポリス</div>
+                    <p class="text-xs text-slate-300">制限時間内に全ての【解除カード】をめくれば勝利！</p>
+                `;
+            } else {
+                confirmCard.className = "w-full max-w-sm p-6 rounded-3xl border-2 bg-red-950/80 border-red-500 shadow-2xl space-y-2 text-red-200";
+                confirmCard.innerHTML = `
+                    <div class="text-2xl font-black text-red-400"><i class="fa-solid fa-bomb mr-2"></i>ボマー団</div>
+                    <p class="text-xs text-slate-300">【BOOM】をめくらせるか、解除を阻止（4R終了）できれば勝利！</p>
+                `;
+            }
+
+            let defuses = me.secretCards.filter(c => c.type === 'defuse').length;
+            let booms = me.secretCards.filter(c => c.type === 'boom').length;
+            let safes = me.secretCards.filter(c => c.type === 'safe').length;
+
+            document.getElementById('confirmHandBreakdown').innerHTML = `
+                <span class="text-sky-400">解除: ${defuses}枚</span>
+                <span class="text-red-400">BOOM: ${booms}枚</span>
+                <span class="text-slate-400">ハズレ: ${safes}枚</span>
+            `;
+
+            let timeLeft = 10;
+            document.getElementById('roleCountdownText').innerText = timeLeft;
+
+            if (roleConfirmTimer) clearInterval(roleConfirmTimer);
+            roleConfirmTimer = setInterval(() => {
+                timeLeft--;
+                document.getElementById('roleCountdownText').innerText = timeLeft;
+                if (timeLeft <= 0) {
+                    clearInterval(roleConfirmTimer);
+                    if (roomData.status === 'ROLE_CONFIRM') {
+                        roomData.status = 'BATTLE';
+                        renderRoomState();
+                    }
+                }
+            }, 1000);
+        }
+
+        function returnToLobby() {
+            if (!isHost) return;
+            roomData.status = 'LOBBY';
+            broadcastState();
+        }
+
+        function renderRoomState() {
+            if (!roomData) return;
+            if (roomData.status === 'LOBBY') {
+                showView('viewRoomLobby');
+                const isHostUser = roomData.hostId === myId;
+                document.getElementById('startGameBtn').classList.toggle('hidden', !isHostUser);
+                document.getElementById('waitingForHostMsg').classList.toggle('hidden', isHostUser);
+
+                const playerList = document.getElementById('playerList');
+                playerList.innerHTML = '';
+                const playersArray = Object.values(roomData.players);
+                document.getElementById('playerCount').innerText = playersArray.length;
+                playersArray.forEach(p => {
+                    playerList.innerHTML += `<div class="bg-slate-900 border border-slate-800 p-4 rounded-2xl flex justify-between items-center"><span class="font-bold text-base">${escapeHtml(p.name)}</span>${p.isHost?'<span class="text-xs bg-red-500/20 text-red-400 px-3 py-1 rounded-full font-bold">ホスト</span>':''}</div>`;
+                });
+            } else if (roomData.status === 'BATTLE') {
+                showView('viewBattle');
+                document.getElementById('currentRoundText').innerText = roomData.round;
+
+                const me = roomData.players[myId];
+                const badge = document.getElementById('myRoleBadge');
+                if (me.role === 'police') {
+                    badge.innerText = "タイムポリス";
+                    badge.className = "px-3 py-1 rounded-full text-xs font-black bg-sky-500/20 text-sky-400 border border-sky-500/40";
+                } else {
+                    badge.innerText = "ボマー団";
+                    badge.className = "px-3 py-1 rounded-full text-xs font-black bg-red-500/20 text-red-400 border border-red-500/40";
+                }
+
+                let unrevealed = me.secretCards.filter(c => !c.revealed);
+                document.getElementById('myDefuseCount').innerText = unrevealed.filter(c => c.type === 'defuse').length;
+                document.getElementById('myBoomCount').innerText = unrevealed.filter(c => c.type === 'boom').length;
+                document.getElementById('mySafeCount').innerText = unrevealed.filter(c => c.type === 'safe').length;
+
+                const nipper = roomData.players[roomData.currentNipperId];
+                document.getElementById('currentNipperName').innerText = nipper ? nipper.name : '----';
+
+                const totalPlayers = Object.keys(roomData.players).length;
+                let revealedDefuses = 0;
+                Object.values(roomData.players).forEach(p => {
+                    p.secretCards.forEach(c => {
+                        if (c.type === 'defuse' && c.revealed) revealedDefuses++;
+                    });
+                });
+
+                const remainingDefuses = totalPlayers - revealedDefuses;
+                document.getElementById('targetDefuseText').innerText = totalPlayers;
+                document.getElementById('remainingDefuseCount').innerText = remainingDefuses;
+
+                const progressPercent = Math.min(100, Math.max(0, (revealedDefuses / totalPlayers) * 100));
+                document.getElementById('defuseProgressBar').style.width = `${progressPercent}%`;
+
+                renderAllPlayersCards();
+                renderLogHistory();
+            } else if (roomData.status === 'GAMEOVER') {
+                showView('viewGameOver');
+                const isPoliceWin = roomData.winner === 'police';
+                const me = roomData.players[myId];
+                if ((isPoliceWin && me.role === 'police') || (!isPoliceWin && me.role === 'bommer')) {
+                    confetti({ particleCount: 120, spread: 80, origin: { y: 0.6 } });
+                }
+
+                document.getElementById('resultBanner').innerHTML = `<h2 class="text-3xl sm:text-4xl font-black ${isPoliceWin?'text-sky-400':'text-red-500'}">${roomData.winMessage}</h2>`;
+                
+                let list = document.getElementById('finalRolesList');
+                list.innerHTML = '';
+                Object.values(roomData.players).forEach(p => {
+                    let roleStr = p.role === 'police' ? '<span class="text-sky-400 font-bold">タイムポリス</span>' : '<span class="text-red-400 font-bold">ボマー団</span>';
+                    list.innerHTML += `<div class="bg-slate-950 p-3 rounded-xl flex justify-between items-center text-sm"><span>${escapeHtml(p.name)}</span><span>${roleStr}</span></div>`;
+                });
+                document.getElementById('gameOverHostControls').classList.toggle('hidden', roomData.hostId !== myId);
+                document.getElementById('gameOverClientMsg').classList.toggle('hidden', roomData.hostId === myId);
+            }
+        }
+
+        function renderAllPlayersCards() {
+            const container = document.getElementById('allPlayersCardsContainer');
+            container.innerHTML = '';
+            const isMyTurn = roomData.currentNipperId === myId;
+
+            Object.values(roomData.players).forEach(p => {
+                let cardsHtml = '';
+                p.secretCards.forEach((card, idx) => {
+                    let isFlipped = card.revealed ? 'flipped' : '';
+                    let isSelf = p.id === myId;
+                    let canCut = isMyTurn && !isSelf && !card.revealed;
+                    let clickAttr = canCut ? `onclick="cutCard('${p.id}', ${idx})"` : '';
+                    let hoverStyle = canCut ? 'cursor-pointer hover:scale-105 active:scale-95' : 'opacity-80';
+
+                    let frontClass = "bg-slate-900 border-slate-800 text-slate-500";
+                    let frontContent = "ハズレ";
+                    if (card.type === 'defuse') { frontClass = "bg-sky-500/20 border-sky-500/70 text-sky-300 font-black"; frontContent = "✨ 解除"; }
+                    else if (card.type === 'boom') { frontClass = "bg-red-600/30 border-red-500 text-red-400 font-black animate-pulse"; frontContent = "💥 BOOM!"; }
+                    else { frontClass = "bg-slate-900 border-slate-800 text-slate-400"; frontContent = "💨 し〜ん"; }
+
+                    cardsHtml += `
+                        <div ${clickAttr} class="w-16 h-20 card-perspective ${hoverStyle}">
+                            <div class="card-inner ${isFlipped}">
+                                <!-- Card Back (Hidden) -->
+                                <div class="card-face bg-slate-900 border-2 border-slate-700 flex flex-col items-center justify-center text-xs font-bold text-slate-300 shadow">
+                                    <i class="fa-solid fa-scissors mb-1 text-slate-500"></i>
+                                    <span>導線</span>
+                                </div>
+                                <!-- Card Front (Revealed) -->
+                                <div class="card-face card-front border-2 ${frontClass} shadow-inner text-xs font-bold">
+                                    ${frontContent}
+                                </div>
+                            </div>
+                        </div>
+                    `;
+                });
+
+                let isSelf = p.id === myId;
+                container.innerHTML += `
+                    <div class="bg-slate-900/80 p-3.5 rounded-2xl border ${isSelf ? 'border-amber-500/30 bg-amber-500/5' : 'border-slate-800'} space-y-2">
+                        <div class="text-xs font-bold text-slate-300 flex justify-between">
+                            <span>${escapeHtml(p.name)} ${isSelf ? '<span class="text-amber-400 text-[10px] ml-1">(あなた)</span>' : ''}</span>
+                            <span class="text-slate-400 font-mono text-[11px]">残り ${p.secretCards.filter(c => !c.revealed).length} 枚</span>
+                        </div>
+                        <div class="flex gap-2 overflow-x-auto py-1">${cardsHtml}</div>
+                    </div>
+                `;
+            });
+        }
+
+        function cutCard(targetPlayerId, cardIndex) {
+            if (roomData.currentNipperId !== myId) return;
+            if (targetPlayerId === myId) { alert("自分のカードは切れません"); return; }
+            if (isHost) processCutCard(targetPlayerId, cardIndex);
+            else hostConn.send({ type: 'CUT_CARD', targetPlayerId, cardIndex });
+        }
+
+        function processCutCard(targetPlayerId, cardIndex) {
+            const targetPlayer = roomData.players[targetPlayerId];
+            const nipperPlayer = roomData.players[roomData.currentNipperId];
+            const card = targetPlayer.secretCards[cardIndex];
+            if (card.revealed) return;
+
+            card.revealed = true;
+            roomData.cutsInRound++;
+            let resultText = "";
+
+            roomData.lastCutInfo = {
+                nipperName: nipperPlayer.name,
+                targetName: targetPlayer.name,
+                cardType: card.type
+            };
+
+            if (card.type === 'boom') {
+                resultText = `💥 ${targetPlayer.name} のカードを切ったら【BOOM】が出た！爆発！`;
+                roomData.status = 'GAMEOVER';
+                roomData.winner = 'bommer';
+                roomData.winMessage = "ボマー団の勝利！(爆破成功)";
+            } else if (card.type === 'defuse') {
+                resultText = `✨ ${targetPlayer.name} のカードを切ったら【解除】が出た！`;
+                
+                const totalPlayers = Object.keys(roomData.players).length;
+                let revealedDefuses = 0;
+                Object.values(roomData.players).forEach(pl => {
+                    pl.secretCards.forEach(c => {
+                        if (c.type === 'defuse' && c.revealed) revealedDefuses++;
+                    });
+                });
+
+                if (revealedDefuses >= totalPlayers) {
+                    resultText += " 全ての解除成功！";
+                    roomData.status = 'GAMEOVER';
+                    roomData.winner = 'police';
+                    roomData.winMessage = "タイムポリスの勝利！(爆弾解除)";
+                } else {
+                    roomData.currentNipperId = targetPlayerId;
+                }
+            } else {
+                resultText = `💨 ${targetPlayer.name} のカードを切ったら【し〜ん】だった。`;
+                roomData.currentNipperId = targetPlayerId;
+            }
+
+            roomData.logHistory.push({ text: resultText });
+
+            const totalPlayers = Object.keys(roomData.players).length;
+            if (roomData.status === 'BATTLE' && roomData.cutsInRound >= totalPlayers) {
+                if (roomData.round >= 4) {
+                    roomData.status = 'GAMEOVER';
+                    roomData.winner = 'bommer';
+                    roomData.winMessage = "ボマー団の勝利！(4ラウンド終了・時間切れ)";
+                    roomData.logHistory.push({ text: "⏰ 4ラウンドが終了し、爆弾が爆破しました。" });
+                } else {
+                    roomData.round++;
+                    roomData.cutsInRound = 0;
+                    roomData.logHistory.push({ text: `🔄 第 ${roomData.round} ラウンド開始！未めくりのカードを混ぜ直して配り直します。` });
+
+                    let remainingDeck = [];
+                    Object.values(roomData.players).forEach(p => {
+                        p.secretCards.forEach(c => {
+                            if (!c.revealed) remainingDeck.push(c.type);
+                        });
+                    });
+
+                    remainingDeck.sort(() => Math.random() - 0.5);
+                    const cardsPerPlayer = 6 - roomData.round;
+
+                    Object.keys(roomData.players).forEach(pId => {
+                        let newHand = [];
+                        for (let i = 0; i < cardsPerPlayer; i++) {
+                            newHand.push({ type: remainingDeck.pop(), revealed: false });
+                        }
+                        newHand.sort(() => Math.random() - 0.5);
+                        roomData.players[pId].secretCards = newHand;
+                    });
+                }
+            }
+
+            broadcastState();
+            showCutCardModal(roomData.lastCutInfo);
+        }
+
+        /* POPUP DRAMATIC EFFECT WHEN A CARD IS CUT */
+        function showCutCardModal(cutInfo) {
+            if (!cutInfo) return;
+            const modal = document.getElementById('cardCutModal');
+            const body = document.getElementById('cardCutModalBody');
+            const actor = document.getElementById('cutModalActor');
+            const icon = document.getElementById('cutModalIcon');
+            const title = document.getElementById('cutModalResultText');
+            const sub = document.getElementById('cutModalSubText');
+
+            actor.innerText = `${cutInfo.nipperName} ➔ ${cutInfo.targetName} のカードをカット！`;
+
+            if (cutInfo.cardType === 'boom') {
+                body.className = "w-full max-w-sm p-6 rounded-3xl border-2 text-center space-y-4 shadow-2xl animate-reveal-pop bg-red-950/90 border-red-500 animate-shake";
+                icon.innerText = "💥";
+                title.innerText = "BOOM! (爆破)";
+                title.className = "text-3xl font-black text-red-400";
+                sub.innerText = "爆弾が起動しました！ボマー団の勝利です！";
+            } else if (cutInfo.cardType === 'defuse') {
+                body.className = "w-full max-w-sm p-6 rounded-3xl border-2 text-center space-y-4 shadow-2xl animate-reveal-pop bg-sky-950/90 border-sky-500";
+                icon.innerText = "✨";
+                title.innerText = "解除コード成功！";
+                title.className = "text-3xl font-black text-sky-300";
+                sub.innerText = "解除導線を切断しました！";
+            } else {
+                body.className = "w-full max-w-sm p-6 rounded-3xl border-2 text-center space-y-4 shadow-2xl animate-reveal-pop bg-slate-900 border-slate-700";
+                icon.innerText = "💨";
+                title.innerText = "し〜ん... (ハズレ)";
+                title.className = "text-2xl font-black text-slate-300";
+                sub.innerText = "何も起きませんでした。";
+            }
+
+            modal.classList.remove('hidden');
+            if (cutModalTimer) clearTimeout(cutModalTimer);
+            cutModalTimer = setTimeout(() => {
+                modal.classList.add('hidden');
+            }, 2200);
+        }
+
+        function renderLogHistory() {
+            const logContainer = document.getElementById('logHistoryContainer');
+            logContainer.innerHTML = '';
+            let logs = roomData.logHistory || [];
+            if (logs.length > 0) {
+                logs.slice().reverse().forEach(log => {
+                    logContainer.innerHTML += `<div class="bg-slate-900/90 p-2 rounded-xl border border-slate-800 text-slate-200 font-medium">• ${escapeHtml(log.text)}</div>`;
+                });
+            } else {
+                logContainer.innerHTML = `<div class="text-slate-500 text-center py-2">ログはありません</div>`;
+            }
+        }
+
+        function copyRoomCode() { navigator.clipboard.writeText(roomCode); alert("コピーしました"); }
+        function escapeHtml(str) { return str ? str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;") : ''; }
+    </script>
+</body>
+</html>
