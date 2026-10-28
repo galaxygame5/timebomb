@@ -36,7 +36,7 @@
             border: 1px solid rgba(255, 255, 255, 0.12);
         }
 
-        /* 3D CARD FLIP ANIMATION */
+        /* 3D CARD FLIP ANIMATION (サイズ拡大に伴う調整) */
         .card-perspective {
             perspective: 1000px;
         }
@@ -56,8 +56,9 @@
             height: 100%;
             -webkit-backface-visibility: hidden;
             backface-visibility: hidden;
-            border-radius: 0.75rem;
+            border-radius: 1rem;
             display: flex;
+            flex-direction: column;
             align-items: center;
             justify-content: center;
         }
@@ -280,7 +281,7 @@
                 </div>
             </div>
 
-            <!-- 3. ALL PLAYERS' CARDS GRID -->
+            <!-- 3. ALL PLAYERS' CARDS GRID (カードサイズ拡大版) -->
             <div class="glass-panel rounded-3xl p-5 shadow-2xl space-y-3 border border-slate-800">
                 <div class="flex justify-between items-center">
                     <h4 class="text-sm font-extrabold text-white flex items-center gap-1.5">
@@ -357,7 +358,7 @@
 
     <!-- SCRIPT -->
     <script>
-        const PREFIX = "time-bomb-online-v4-";
+        const PREFIX = "time-bomb-online-v6-";
         let peer = null, myId = "", myName = "", roomCode = "";
         let isHost = false;
         let connections = {}, hostConn = null;
@@ -369,7 +370,7 @@
             players: {},
             currentNipperId: "",
             cutsInRound: 0,
-            totalDefusedCount: 0, // 全ラウンド累積の成功解除枚数
+            totalDefusedCount: 0,
             logHistory: [],
             lastCutInfo: null
         };
@@ -489,10 +490,10 @@
             dealCardsForRound(pIds, count, 5);
             roomData.round = 1;
             roomData.cutsInRound = 0;
-            roomData.totalDefusedCount = 0; // 解除数の累積リセット
+            roomData.totalDefusedCount = 0;
             roomData.status = 'ROLE_CONFIRM';
             roomData.currentNipperId = pIds[Math.floor(Math.random() * count)];
-            roomData.logHistory = [{ text: "ゲームが開始されました。" }];
+            roomData.logHistory = [{ text: `ゲームが開始されました。最初のニッパーは ${roomData.players[roomData.currentNipperId].name} さんです！` }];
             roomData.lastCutInfo = null;
 
             broadcastState();
@@ -654,6 +655,7 @@
                     let isSelf = p.id === myId;
                     let canCut = isMyTurn && !isSelf && !card.revealed;
                     let clickAttr = canCut ? `onclick="cutCard('${p.id}', ${idx})"` : '';
+                    // カードサイズを大きく拡大 (w-20 h-28 / テキストやアイコンも大きく)
                     let hoverStyle = canCut ? 'cursor-pointer hover:scale-105 active:scale-95' : 'opacity-80';
 
                     let frontClass = "bg-slate-900 border-slate-800 text-slate-500";
@@ -663,15 +665,15 @@
                     else { frontClass = "bg-slate-900 border-slate-800 text-slate-400"; frontContent = "💨 し〜ん"; }
 
                     cardsHtml += `
-                        <div ${clickAttr} class="w-16 h-20 card-perspective ${hoverStyle}">
+                        <div ${clickAttr} class="w-20 h-28 card-perspective ${hoverStyle}">
                             <div class="card-inner ${isFlipped}">
-                                <!-- Card Back (Hidden) -->
-                                <div class="card-face bg-slate-900 border-2 border-slate-700 flex flex-col items-center justify-center text-xs font-bold text-slate-300 shadow">
-                                    <i class="fa-solid fa-scissors mb-1 text-slate-500"></i>
+                                <!-- Card Back (Hidden) - サイズ拡大・押しやすく改善 -->
+                                <div class="card-face bg-slate-900 border-2 border-slate-700 flex flex-col items-center justify-center text-sm font-bold text-slate-300 shadow">
+                                    <i class="fa-solid fa-scissors mb-1.5 text-base text-red-400"></i>
                                     <span>導線</span>
                                 </div>
                                 <!-- Card Front (Revealed) -->
-                                <div class="card-face card-front border-2 ${frontClass} shadow-inner text-xs font-bold">
+                                <div class="card-face card-front border-2 ${frontClass} shadow-inner text-xs sm:text-sm font-bold">
                                     ${frontContent}
                                 </div>
                             </div>
@@ -681,12 +683,12 @@
 
                 let isSelf = p.id === myId;
                 container.innerHTML += `
-                    <div class="bg-slate-900/80 p-3.5 rounded-2xl border ${isSelf ? 'border-amber-500/30 bg-amber-500/5' : 'border-slate-800'} space-y-2">
+                    <div class="bg-slate-900/80 p-4 rounded-2xl border ${isSelf ? 'border-amber-500/30 bg-amber-500/5' : 'border-slate-800'} space-y-2.5">
                         <div class="text-xs font-bold text-slate-300 flex justify-between">
                             <span>${escapeHtml(p.name)} ${isSelf ? '<span class="text-amber-400 text-[10px] ml-1">(あなた)</span>' : ''}</span>
-                            <span class="text-slate-400 font-mono text-[11px]">残り ${p.secretCards.filter(c => !c.revealed).length} 枚</span>
+                            <span class="text-slate-400 font-mono text-xs">残り ${p.secretCards.filter(c => !c.revealed).length} 枚</span>
                         </div>
-                        <div class="flex gap-2 overflow-x-auto py-1">${cardsHtml}</div>
+                        <div class="flex gap-2.5 overflow-x-auto py-1.5">${cardsHtml}</div>
                     </div>
                 `;
             });
@@ -721,7 +723,7 @@
                 roomData.winner = 'bommer';
                 roomData.winMessage = "ボマー団の勝利！(爆破成功)";
             } else if (card.type === 'defuse') {
-                roomData.totalDefusedCount++; // 全ラウンドの解除枚数を加算
+                roomData.totalDefusedCount++;
                 resultText = `✨ ${targetPlayer.name} のカードを切ったら【解除】が出た！`;
                 
                 const totalPlayers = Object.keys(roomData.players).length;
@@ -753,7 +755,6 @@
                     roomData.cutsInRound = 0;
                     roomData.logHistory.push({ text: `🔄 第 ${roomData.round} ラウンド開始！未めくりのカードを混ぜ直して配り直します。` });
 
-                    // 未めくりのカードを回収してシャッフルし、各自に配り直す
                     let remainingDeck = [];
                     Object.values(roomData.players).forEach(p => {
                         p.secretCards.forEach(c => {
